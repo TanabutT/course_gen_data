@@ -30,6 +30,7 @@ This project generates mock data for a course catalog system from EdX course dat
    ```bash
    pip install -r requirements.txt
    ```
+   **Note**: If you encounter dependency issues with Python 3.12, the requirements.txt file contains compatible versions of all packages.
 
 ## Usage
 
@@ -102,10 +103,15 @@ The contentTitle generation uses a smart keyword matching system that:
 
 ## Dependencies
 
-- pandas: For CSV data manipulation
-- python-ulid: For generating unique identifiers
-- pytz: For timezone handling
-- typing_extensions: Required by python-ulid
+- pandas==2.0.3: For CSV data manipulation
+- python-ulid==1.1.0: For unique ID generation
+- pytz==2023.3: For timezone handling
+- typing_extensions==4.7.1: Required by python-ulid
+- numpy==2.0.1: Required by pandas
+- python-dateutil==2.8.2: Required by pandas
+- six==1.16.0: Required by python-dateutil
+
+All packages are tested and compatible with Python 3.12.
 
 ## What Was Done
 
