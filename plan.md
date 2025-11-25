@@ -49,11 +49,11 @@ prior generate mock data
 
       ## Implementation Note
       The contentTitle generation uses a smart keyword matching system that:
-      1. Analyzes the lessontitle+shortDescription and break in to contents
-      2. Identifies the main topic and subtopics within the content
-      3. Generates a list of 4-5 relevant contenttitles that logically belong in the course
-      4. Special handling for language courses with dedicated templates for Chinese, Spanish, French, German, Japanese, and Arabic
-        
+      1. Analyzes the lessontitle+shortDescription+Categories+subcategories and get a 4-5 main keywords into contents
+      2. make sure put the weight on the lessontitle alot.
+      3. put a list of 4-5 relevant contenttitles that logically belong in the course
+      5. Special handling for language courses with dedicated templates for Chinese, Spanish, French, German, Japanese, and Arabic
+            
 step 2: Generate mock data
   id field use ULID
   note: row of data no need to increase just increase the number of columns that missing eg. id, createdAt, updatedAt, deletedAt, status, shortDescription, description, previewVideoId, coverImageId
