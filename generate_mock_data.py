@@ -399,7 +399,7 @@ def generate_content_titles(title: str, description: str, category: str) -> List
         else:
             content_titles.append(item)
 
-    return ",".join(content_titles[:5])  # Ensure we only return 5 titles
+    return content_titles[:5]  # Ensure we only return list of 5 content titles
 
 
 def generate_id() -> str:
