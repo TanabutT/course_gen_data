@@ -12,6 +12,7 @@ from ulid import ULID
 # Load environment variables from .env file
 load_dotenv()
 
+
 # Function to get API key from multiple sources
 def get_api_key():
     # First check environment variable
@@ -21,10 +22,10 @@ def get_api_key():
 
     # Then check .env file
     try:
-        with open('.env/GLM_API_KEY.env', 'r') as f:
+        with open(".env/GLM_API_KEY.env", "r") as f:
             for line in f:
-                if line.startswith('GLM_API_KEY='):
-                    return line.split('=', 1)[1].strip()
+                if line.startswith("GLM_API_KEY="):
+                    return line.split("=", 1)[1].strip()
     except FileNotFoundError:
         pass
 
@@ -53,8 +54,12 @@ def generate_content_titles(lesson_title, description, category_name):
         # Get API key from multiple sources
         api_key = get_api_key()
         if not api_key:
-            print("Warning: GLM_API_KEY not found in environment variables or .env file. Using fallback content generation.")
-            return generate_fallback_content_titles(lesson_title, description, category_name)
+            print(
+                "Warning: GLM_API_KEY not found in environment variables or .env file. Using fallback content generation."
+            )
+            return generate_fallback_content_titles(
+                lesson_title, description, category_name
+            )
 
         # API endpoint
         url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
@@ -62,7 +67,7 @@ def generate_content_titles(lesson_title, description, category_name):
         # Prepare headers
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
+            "Authorization": f"Bearer {api_key}",
         }
 
         # Determine if it's a language course for special handling
@@ -107,22 +112,24 @@ def generate_content_titles(lesson_title, description, category_name):
         Generate 4-5 content titles that would logically be part of this course.
         Return only the titles as a JSON array, with no additional text."""
 
-                # Prepare the request payload
+        # Prepare the request payload
         payload = {
             "model": "glm-4.6",
             "messages": [
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt
-                }
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.7,
             "max_tokens": 500,
-            "response_format": {"type": "json_object", "schema": {"type": "object", "properties": {"titles": {"type": "array", "items": {"type": "string"}}}}
+            "response_format": {
+                "type": "json_object",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "titles": {"type": "array", "items": {"type": "string"}}
+                    },
+                },
+            },
         }
 
         # Make the API call
@@ -139,16 +146,22 @@ def generate_content_titles(lesson_title, description, category_name):
                 # Try to parse as JSON
                 content_data = json.loads(content)
                 if "titles" in content_data and len(content_data["titles"]) > 0:
-                    return content_data["titles"][:5]  # Ensure we return at most 5 titles
+                    return content_data["titles"][
+                        :5
+                    ]  # Ensure we return at most 5 titles
             except json.JSONDecodeError:
                 # Fallback: try to extract titles from text response
                 titles = []
-                lines = content.strip().split('\n')
+                lines = content.strip().split("\n")
                 for line in lines:
                     line = line.strip()
                     # Remove potential numbering or bullets
-                    if line.startswith(('-', '*', '1.', '2.', '3.', '4.', '5.')):
-                        line = line[1:].strip() if line.startswith('-', '*') else line[2:].strip()
+                    if line.startswith(("-", "*", "1.", "2.", "3.", "4.", "5.")):
+                        line = (
+                            line[1:].strip()
+                            if line.startswith("-", "*")
+                            else line[2:].strip()
+                        )
                     if line and len(line) > 0:
                         titles.append(line)
                         if len(titles) >= 5:
@@ -157,11 +170,15 @@ def generate_content_titles(lesson_title, description, category_name):
                     return titles
 
         # If all else fails, use fallback
-        return generate_fallback_content_titles(lesson_title, description, category_name)
+        return generate_fallback_content_titles(
+            lesson_title, description, category_name
+        )
 
     except Exception as e:
         print(f"Error generating content titles with GLM-4.6 API: {str(e)}")
-        return generate_fallback_content_titles(lesson_title, description, category_name)
+        return generate_fallback_content_titles(
+            lesson_title, description, category_name
+        )
 
 
 def generate_fallback_content_titles(lesson_title, description, category_name):
