@@ -372,13 +372,13 @@ def extract_main_topic(title: str) -> str:
     return main_topic
 
 
-def generate_content_titles(title: str, description: str, category: str) -> List[str]:
-    """Generate 4-5 content titles based on the course title and description"""
+def generate_content_titles(title: str, description: str, category: str) -> str:
+    """Generate 4-5 content titles as a comma-separated string based on the course title and description"""
 
     # Check if it's a language course first
     for language, template in LANGUAGE_TEMPLATES.items():
         if language.lower() in title.lower():
-            return template
+            return ",".join(template)
 
     # Extract main topic for template substitution
     main_topic = extract_main_topic(title)
@@ -399,7 +399,7 @@ def generate_content_titles(title: str, description: str, category: str) -> List
         else:
             content_titles.append(item)
 
-    return content_titles[:5]  # Ensure we only return 5 titles
+    return ",".join(content_titles[:5])  # Ensure we only return 5 titles
 
 
 def generate_id() -> str:
@@ -461,8 +461,8 @@ def main():
         category = detect_category(description, lessontitle)
         subcategory = detect_subcategory(description, category)
 
-        # Generate content titles
-        content_titles = generate_content_titles(lessontitle, description, category)
+        # Generate content titles as comma-separated string
+        content_titles_str = generate_content_titles(lessontitle, description, category)
 
         # Generate timestamps
         created_at, updated_at, deleted_at = generate_timestamps()
@@ -479,7 +479,7 @@ def main():
         output_row = {
             "id": id,
             "lessontitle": lessontitle,
-            "contentTitle": ", ".join(content_titles),
+            "contentTitle": content_titles_str,  # Now using comma-separated string
             "skillName": f"{category} Skills",
             "level": level,
             "categoryId": f"cat_{category.replace(' ', '_').lower()}",
