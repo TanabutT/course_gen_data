@@ -10,7 +10,7 @@ language:python 3.12 and other compatible libraries
 
 The implementation successfully generates context-aware mock data with:
 - Smart categorization based on course content analysis
-- Meaningful content titles derived from lesson titles and descriptions
+- Meaningful content titles derived from lesson titles by breaking down into logical components
 - Language course support with specialized templates
 - Proper timezone handling for Thailand/Bangkok
 - Unique IDs using ULID
@@ -49,11 +49,10 @@ prior generate mock data
 
       ## Implementation Note
       The contentTitle generation uses a smart keyword matching system that:
-      1. Analyzes the lessontitle + description field for specific topic keywords
-      2. Matches keywords against predefined content templates for each category
-      3. Prioritizes specific terms (e.g., "artificial intelligence") over general terms (e.g., "python")
-      4. Returns a list of 4-5 relevant topic titles that logically belong in the course
-      5. Special handling for language courses with dedicated templates for Chinese, Spanish, French, German, Japanese, and Arabic
+      1. Analyzes the lessontitle and break in to contents
+      2. Identifies the main topic and subtopics within the content
+      3. Generates a list of 4-5 relevant contenttitles that logically belong in the course
+      4. Special handling for language courses with dedicated templates for Chinese, Spanish, French, German, Japanese, and Arabic
         
 step 2: Generate mock data
   id field use ULID

@@ -75,7 +75,7 @@ The script maps fields from the original EdX.csv to the output schema:
 
 ## ContentTitle Examples
 
-The contentTitle field generates context-aware topic titles based on both the lesson title and description. Here are some examples:
+The contentTitle field generates context-aware topic titles based on lesson title by breaking it down into logical components. Here are some examples:
 
 - **"Programming for Everybody (Getting Started with Python)"** → `["Introduction to Python", "Variables and Operators", "Data Types", "Control Structures", "Functions"]`
 - **"Justice"** → `["Introduction to Justice", "Legal System", "Criminal Law", "Civil Law", "Ethics and Justice"]`
@@ -85,11 +85,10 @@ The contentTitle field generates context-aware topic titles based on both the le
 ## Implementation Details
 
 The contentTitle generation uses a smart keyword matching system that:
-1. Analyzes the lesson title and description field for specific topic keywords
-2. Matches keywords against predefined content templates for each category
-3. Prioritizes specific terms (e.g., "artificial intelligence") over general terms (e.g., "python")
-4. Returns a list of 4-5 relevant topic titles that logically belong in the course
-5. Special handling for language courses with dedicated templates for Chinese, Spanish, French, German, Japanese, and Arabic
+1. Analyzes the lessontitle and breaks it into contents
+2. Identifies the main topic and subtopics within the content
+3. Generates a list of 4-5 relevant contenttitles that logically belong in the course
+4. Special handling for language courses with dedicated templates for Chinese, Spanish, French, German, Japanese, and Arabic
 
 ## Results
 
