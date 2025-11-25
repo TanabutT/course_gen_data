@@ -1,5 +1,5 @@
-numpy==2.0.1
-pandas==2.0.3
+numpy==2.3.5
+pandas==2.3.3
 python-dateutil==2.8.2
 python-ulid==1.1.0
 pytz==2023.3

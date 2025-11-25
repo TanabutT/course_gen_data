@@ -1,6 +1,5 @@
 import random
 from datetime import datetime, timedelta
-
 import pandas as pd
 import pytz
 from ulid import ULID
