@@ -1,437 +1,758 @@
+import json
+import os
 import random
 from datetime import datetime, timedelta
+
 import pandas as pd
 import pytz
+import requests
+from dotenv import load_dotenv
 from ulid import ULID
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Function to get API key from multiple sources
+def get_api_key():
+    # First check environment variable
+    api_key = os.environ.get("GLM_API_KEY")
+    if api_key:
+        return api_key
+
+    # Then check .env file
+    try:
+        with open('.env/GLM_API_KEY.env', 'r') as f:
+            for line in f:
+                if line.startswith('GLM_API_KEY='):
+                    return line.split('=', 1)[1].strip()
+    except FileNotFoundError:
+        pass
+
+    return None
 
 
 def generate_content_titles(lesson_title, description, category_name):
     """
-    Generate meaningful content titles based on the lesson title, description, and category.
-    Returns a list of 4-5 content titles that would logically be part of this course.
+    Generate meaningful content titles using the GLM-4.6 API to analyze lesson title and description.
+    The function:
+    1. Analyzes the lesson title and short description to break into contents
+    2. Identifies the main topic and subtopics within the content
+    3. Uses GLM-4.6 to generate a list of 4-5 relevant content titles that logically belong in the course
+    4. Special handling for language courses with dedicated prompts for Chinese, Spanish, French, German, Japanese, and Arabic
+
+    ## Implementation Note
+    This function uses the GLM-4.6 API to generate content titles dynamically based on the lesson title and description.
+    The system:
+    1. Analyzes the lesson title and short description to break into contents
+    2. Identifies the main topic and subtopics within the content
+    3. Generates a list of 4-5 relevant content titles that logically belong in the course
+    4. Special handling for language courses with dedicated templates for Chinese, Spanish, French, German, Japanese, and Arabic
+    4. Special handling for language courses with dedicated templates for Chinese, Spanish, French, German, Japanese, and Arabic
     """
+    try:
+        # Get API key from multiple sources
+        api_key = get_api_key()
+        if not api_key:
+            print("Warning: GLM_API_KEY not found in environment variables or .env file. Using fallback content generation.")
+            return generate_fallback_content_titles(lesson_title, description, category_name)
+
+        # API endpoint
+        url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+
+        # Prepare headers
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+
+        # Determine if it's a language course for special handling
+        language_keywords = {
+            "chinese": ["chinese", "mandarin", "中文", "汉语"],
+            "spanish": ["spanish", "español", "español"],
+            "french": ["french", "français", "français"],
+            "german": ["german", "deutsch"],
+            "japanese": ["japanese", "日本語", "日本語"],
+            "arabic": ["arabic", "العربية"],
+        }
+
+        combined_text = f"{lesson_title} {description}".lower()
+
+        # Check if it's a language course
+        language_course = None
+        for language, keywords in language_keywords.items():
+            for keyword in keywords:
+                if keyword in combined_text:
+                    language_course = language
+                    break
+            if language_course:
+                break
+
+        # Create specialized prompt based on whether it's a language course
+        if language_course:
+            system_prompt = f"""You are a course content designer specializing in {language_course} language courses.
+            Based on the lesson title and description, generate 4-5 logical content titles that would be part of this {language_course} language course.
+            The titles should follow a logical progression for language learning."""
+        else:
+            system_prompt = """You are a course content designer. Based on the lesson title and description,
+            generate 4-5 logical content titles that would be part of this course.
+            The titles should follow a logical progression from basic concepts to more advanced topics."""
+
+        # Prepare the prompt with lesson title and description
+        user_prompt = f"""Lesson Title: {lesson_title}
+
+        Description: {description}
+
+        Category: {category_name}
+
+        Generate 4-5 content titles that would logically be part of this course.
+        Return only the titles as a JSON array, with no additional text."""
+
+                # Prepare the request payload
+        payload = {
+            "model": "glm-4.6",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt
+                }
+            ],
+            "temperature": 0.7,
+            "max_tokens": 500,
+            "response_format": {"type": "json_object", "schema": {"type": "object", "properties": {"titles": {"type": "array", "items": {"type": "string"}}}}
+        }
+
+        # Make the API call
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response.raise_for_status()
+
+        # Parse the response
+        result = response.json()
+
+        # Extract the titles
+        if "choices" in result and len(result["choices"]) > 0:
+            content = result["choices"][0]["message"]["content"]
+            try:
+                # Try to parse as JSON
+                content_data = json.loads(content)
+                if "titles" in content_data and len(content_data["titles"]) > 0:
+                    return content_data["titles"][:5]  # Ensure we return at most 5 titles
+            except json.JSONDecodeError:
+                # Fallback: try to extract titles from text response
+                titles = []
+                lines = content.strip().split('\n')
+                for line in lines:
+                    line = line.strip()
+                    # Remove potential numbering or bullets
+                    if line.startswith(('-', '*', '1.', '2.', '3.', '4.', '5.')):
+                        line = line[1:].strip() if line.startswith('-', '*') else line[2:].strip()
+                    if line and len(line) > 0:
+                        titles.append(line)
+                        if len(titles) >= 5:
+                            break
+                if titles:
+                    return titles
+
+        # If all else fails, use fallback
+        return generate_fallback_content_titles(lesson_title, description, category_name)
+
+    except Exception as e:
+        print(f"Error generating content titles with GLM-4.6 API: {str(e)}")
+        return generate_fallback_content_titles(lesson_title, description, category_name)
+
+
+def generate_fallback_content_titles(lesson_title, description, category_name):
+    """
+    Fallback method to generate content titles when API is not available.
+    Uses rule-based approach similar to the original implementation.
+    """
+    # Convert to lowercase for case-insensitive matching
     lesson_title = lesson_title.lower()
     description = description.lower()
 
-    # Define content templates based on keywords
-    content_templates = {
-        "Computer Science": {
-            "python": [
-                "Introduction to Python",
-                "Variables and Operators",
-                "Data Types",
-                "Control Structures",
-                "Functions",
-            ],
-            "programming": [
-                "Introduction to Programming",
-                "Variables and Operators",
-                "Data Types",
-                "Control Structures",
-                "Functions",
-            ],
-            "artificial intelligence": [
-                "Introduction to AI",
-                "Machine Learning",
-                "Deep Learning",
-                "Natural Language Processing",
-                "Computer Vision",
-            ],
-            "computer science": [
-                "Introduction to Computer Science",
-                "Data Types",
-                "Control Structures",
-                "Functions",
-                "Problem Solving",
-            ],
-            "web development": [
-                "HTML Fundamentals",
-                "CSS Styling",
-                "JavaScript Basics",
-                "DOM Manipulation",
-                "Web Development Frameworks",
-            ],
-            "data structures": [
-                "Introduction to Data Structures",
-                "Arrays and Lists",
-                "Stacks and Queues",
-                "Trees and Graphs",
-                "Hash Tables and Dictionaries",
-            ],
-            "algorithms": [
-                "Algorithm Basics",
-                "Sorting Algorithms",
-                "Search Algorithms",
-                "Graph Algorithms",
-                "Algorithm Complexity",
-            ],
-            "default": [
-                "Introduction to Programming",
-                "Basic Concepts",
-                "Data Handling",
-                "Problem Solving",
-                "Project Implementation",
-            ],
-        },
-        "Business & Management": {
-            "marketing": [
-                "Marketing Fundamentals",
-                "Market Research",
-                "Consumer Behavior",
-                "Digital Marketing",
-                "Marketing Strategy",
-            ],
-            "project management": [
-                "Project Planning",
-                "Resource Management",
-                "Risk Assessment",
-                "Quality Control",
-                "Project Execution",
-            ],
-            "finance": [
-                "Financial Basics",
-                "Investment Principles",
-                "Risk Management",
-                "Financial Markets",
-                "Portfolio Management",
-            ],
-            "leadership": [
-                "Leadership Fundamentals",
-                "Team Building",
-                "Communication Skills",
-                "Decision Making",
-                "Strategic Leadership",
-            ],
-            "default": [
-                "Business Fundamentals",
-                "Organizational Structure",
-                "Business Strategy",
-                "Market Analysis",
-                "Business Operations",
-            ],
-        },
-        "Data Analysis & Statistics": {
-            "data analysis": [
-                "Introduction to Data Analysis",
-                "Data Collection",
-                "Data Cleaning",
-                "Statistical Analysis",
-                "Data Visualization",
-            ],
-            "statistics": [
-                "Introduction to Statistics",
-                "Probability Theory",
-                "Statistical Inference",
-                "Hypothesis Testing",
-                "Regression Analysis",
-            ],
-            "machine learning": [
-                "Introduction to Machine Learning",
-                "Supervised Learning",
-                "Unsupervised Learning",
-                "Model Evaluation",
-                "Deep Learning Basics",
-            ],
-            "data science": [
-                "Data Science Fundamentals",
-                "Data Mining",
-                "Statistical Modeling",
-                "Data Visualization",
-                "Big Data Technologies",
-            ],
-            "default": [
-                "Introduction to Data",
-                "Data Exploration",
-                "Data Processing",
-                "Data Analysis",
-                "Data Presentation",
-            ],
-        },
-        "Education & Teacher Training": {
-            "teaching": [
-                "Teaching Fundamentals",
-                "Learning Styles",
-                "Teaching Methods",
-                "Classroom Management",
-                "Educational Assessment",
-            ],
-            "education": [
-                "Introduction to Education",
-                "Educational Psychology",
-                "Curriculum Design",
-                "Teaching Methods",
-                "Educational Technology",
-            ],
-            "default": [
-                "Education Fundamentals",
-                "Learning Theories",
-                "Teaching Strategies",
-                "Assessment Methods",
-                "Educational Technology",
-            ],
-        },
-        "Health & Safety": {
-            "health": [
-                "Introduction to Health",
-                "Health Promotion",
-                "Disease Prevention",
-                "Healthcare Systems",
-                "Public Health",
-            ],
-            "mental health": [
-                "Introduction to Mental Health",
-                "Psychological Well-being",
-                "Stress Management",
-                "Mental Disorders",
-                "Therapeutic Approaches",
-            ],
-            "safety": [
-                "Safety Fundamentals",
-                "Risk Assessment",
-                "Safety Protocols",
-                "Emergency Response",
-                "Safety Management",
-            ],
-            "default": [
-                "Introduction to Health",
-                "Wellness Basics",
-                "Health Promotion",
-                "Disease Prevention",
-                "Healthcare Systems",
-            ],
-        },
-        "Communication": {
-            "communication": [
-                "Communication Basics",
-                "Interpersonal Skills",
-                "Group Communication",
-                "Public Speaking",
-                "Digital Communication",
-            ],
-            "writing": [
-                "Writing Fundamentals",
-                "Writing Process",
-                "Writing Styles",
-                "Editing and Proofreading",
-                "Publishing",
-            ],
-            "default": [
-                "Communication Fundamentals",
-                "Interpersonal Communication",
-                "Group Dynamics",
-                "Public Speaking",
-                "Digital Communication",
-            ],
-        },
-        "Humanities": {
-            "philosophy": [
-                "Introduction to Philosophy",
-                "Ethics",
-                "Logic",
-                "Metaphysics",
-                "Philosophy of Mind",
-            ],
-            "justice": [
-                "Introduction to Justice",
-                "Legal System",
-                "Criminal Law",
-                "Civil Law",
-                "Ethics and Justice",
-            ],
-            "history": [
-                "Introduction to History",
-                "Historical Methods",
-                "World History",
-                "Cultural History",
-                "Historical Analysis",
-            ],
-            "art": [
-                "Introduction to Art",
-                "Art History",
-                "Art Movements",
-                "Art Appreciation",
-                "Art Creation",
-            ],
-            "default": [
-                "Introduction to Humanities",
-                "Cultural Studies",
-                "Historical Context",
-                "Art and Expression",
-                "Critical Thinking",
-            ],
-        },
-        "Science": {
-            "biology": [
-                "Introduction to Biology",
-                "Cell Biology",
-                "Genetics",
-                "Evolution",
-                "Ecology",
-            ],
-            "chemistry": [
-                "Introduction to Chemistry",
-                "Atomic Structure",
-                "Chemical Bonds",
-                "Chemical Reactions",
-                "Organic Chemistry",
-            ],
-            "physics": [
-                "Introduction to Physics",
-                "Mechanics",
-                "Thermodynamics",
-                "Electromagnetism",
-                "Quantum Physics",
-            ],
-            "environmental": [
-                "Environmental Science",
-                "Ecosystems",
-                "Climate Change",
-                "Conservation",
-                "Sustainability",
-            ],
-            "default": [
-                "Introduction to Science",
-                "Scientific Method",
-                "Basic Principles",
-                "Scientific Applications",
-                "Science in Society",
-            ],
-        },
-        "Languages": {
-            "chinese": [
-                "Introduction to Mandarin Chinese",
-                "Pinyin and Characters",
-                "Grammar and Sentence Structure",
-                "Reading and Writing",
-                "Listening and Speaking",
-            ],
-            "mandarin": [
-                "Introduction to Mandarin Chinese",
-                "Pinyin and Characters",
-                "Grammar and Sentence Structure",
-                "Reading and Writing",
-                "Listening and Speaking",
-            ],
-            "spanish": [
-                "Introduction to Spanish",
-                "Spanish Pronunciation",
-                "Grammar and Vocabulary",
-                "Reading Comprehension",
-                "Conversation Skills",
-            ],
-            "french": [
-                "Introduction to French",
-                "French Pronunciation",
-                "Grammar and Vocabulary",
-                "Reading Comprehension",
-                "Conversation Skills",
-            ],
-            "german": [
-                "Introduction to German",
-                "German Pronunciation",
-                "Grammar and Vocabulary",
-                "Reading Comprehension",
-                "Conversation Skills",
-            ],
-            "japanese": [
-                "Introduction to Japanese",
-                "Hiragana and Katakana",
-                "Grammar and Vocabulary",
-                "Reading and Writing",
-                "Conversation Skills",
-            ],
-            "arabic": [
-                "Introduction to Arabic",
-                "Arabic Alphabet",
-                "Grammar and Vocabulary",
-                "Reading and Writing",
-                "Conversation Skills",
-            ],
-            "default": [
-                "Introduction to Language",
-                "Basic Pronunciation",
-                "Grammar Fundamentals",
-                "Reading and Writing",
-                "Listening and Speaking",
-            ],
-        },
+    # Combine lesson title and description for comprehensive analysis
+    combined_text = f"{lesson_title} {description}"
+
+    # Extract main topic using keyword analysis
+    main_topic = identify_main_topic(combined_text, category_name)
+
+    # Extract subtopics from the content
+    subtopics = identify_subtopics(combined_text, main_topic)
+
+    # Generate content titles based on the identified topic and subtopics
+    content_titles = generate_titles_for_topic(main_topic, subtopics)
+
+    return content_titles
+
+
+def identify_main_topic(combined_text, category_name):
+    """
+    Identify the main topic of the course based on keyword analysis.
+    Special handling for language courses.
+    """
+    # Check for language courses first as they have special handling
+    language_keywords = {
+        "chinese": ["chinese", "mandarin", "中文", "汉语"],
+        "spanish": ["spanish", "español", "español"],
+        "french": ["french", "français", "français"],
+        "german": ["german", "deutsch"],
+        "japanese": ["japanese", "日本語", "日本語"],
+        "arabic": ["arabic", "العربية"],
     }
 
-    # Combine lesson title and description for keyword analysis
-    # Create a combined text for more comprehensive keyword matching
-    combined_text = lesson_title + " " + description
+    # Check for specific language keywords
+    for language, keywords in language_keywords.items():
+        for keyword in keywords:
+            if keyword in combined_text:
+                return language
 
-    # Get the appropriate content templates for the category
-    category_templates = content_templates.get(
-        category_name, content_templates["Computer Science"]
+    # Define topic keywords for different categories
+    topic_keywords = {
+        "Computer Science": [
+            ("python", "Python"),
+            ("programming", "Programming"),
+            ("javascript", "JavaScript"),
+            ("java", "Java"),
+            ("web development", "Web Development"),
+            ("artificial intelligence", "Artificial Intelligence"),
+            ("ai", "Artificial Intelligence"),
+            ("machine learning", "Machine Learning"),
+            ("ml", "Machine Learning"),
+            ("deep learning", "Deep Learning"),
+            ("data science", "Data Science"),
+            ("data structures", "Data Structures"),
+            ("algorithms", "Algorithms"),
+            ("computer science", "Computer Science"),
+            ("cybersecurity", "Cybersecurity"),
+        ],
+        "Business & Management": [
+            ("marketing", "Marketing"),
+            ("project management", "Project Management"),
+            ("finance", "Finance"),
+            ("accounting", "Accounting"),
+            ("leadership", "Leadership"),
+            ("entrepreneurship", "Entrepreneurship"),
+            ("business", "Business"),
+        ],
+        "Data Analysis & Statistics": [
+            ("data analysis", "Data Analysis"),
+            ("statistics", "Statistics"),
+            ("data visualization", "Data Visualization"),
+            ("analytics", "Analytics"),
+        ],
+        "Education & Teacher Training": [
+            ("teaching", "Teaching"),
+            ("education", "Education"),
+            ("pedagogy", "Pedagogy"),
+        ],
+        "Health & Safety": [
+            ("health", "Health"),
+            ("mental health", "Mental Health"),
+            ("safety", "Safety"),
+            ("first aid", "First Aid"),
+            ("nutrition", "Nutrition"),
+        ],
+        "Communication": [
+            ("communication", "Communication"),
+            ("public speaking", "Public Speaking"),
+            ("writing", "Writing"),
+            ("journalism", "Journalism"),
+        ],
+        "Humanities": [
+            ("philosophy", "Philosophy"),
+            ("history", "History"),
+            ("art", "Art"),
+            ("music", "Music"),
+            ("literature", "Literature"),
+            ("justice", "Justice"),
+            ("law", "Law"),
+            ("ethics", "Ethics"),
+        ],
+        "Science": [
+            ("biology", "Biology"),
+            ("chemistry", "Chemistry"),
+            ("physics", "Physics"),
+            ("environmental science", "Environmental Science"),
+            ("astronomy", "Astronomy"),
+            ("psychology", "Psychology"),
+        ],
+    }
+
+    # Get the appropriate keyword list for the category
+    category_keywords = topic_keywords.get(category_name, [])
+
+    # Check for keywords in the combined text
+    for keyword, topic in category_keywords:
+        if keyword in combined_text:
+            return topic
+
+    # If no specific topic is identified, use a default based on category
+    return category_name if category_name else "General"
+
+
+def identify_subtopics(combined_text, main_topic):
+    """
+    Identify subtopics within the content based on keyword analysis.
+    """
+    subtopics = []
+
+    # Common subtopic patterns
+    subtopic_patterns = {
+        "Python": [
+            "variables",
+            "data types",
+            "control flow",
+            "functions",
+            "object-oriented programming",
+            "modules",
+            "libraries",
+            "debugging",
+        ],
+        "Programming": [
+            "variables",
+            "data types",
+            "control structures",
+            "functions",
+            "error handling",
+            "testing",
+            "debugging",
+        ],
+        "Artificial Intelligence": [
+            "machine learning",
+            "neural networks",
+            "deep learning",
+            "natural language processing",
+            "computer vision",
+            "ethics",
+        ],
+        "Web Development": [
+            "html",
+            "css",
+            "javascript",
+            "responsive design",
+            "backend development",
+            "frontend frameworks",
+        ],
+        "Data Science": [
+            "data collection",
+            "data cleaning",
+            "data analysis",
+            "data visualization",
+            "machine learning",
+        ],
+        "Marketing": [
+            "market research",
+            "consumer behavior",
+            "digital marketing",
+            "content strategy",
+            "branding",
+        ],
+        "Finance": [
+            "financial planning",
+            "investment",
+            "risk management",
+            "financial analysis",
+            "budgeting",
+        ],
+        "Leadership": [
+            "team building",
+            "communication",
+            "decision making",
+            "conflict resolution",
+            "motivation",
+        ],
+        "Data Analysis": [
+            "data collection",
+            "statistical analysis",
+            "data visualization",
+            "data interpretation",
+            "reporting",
+        ],
+        "Statistics": [
+            "probability theory",
+            "statistical inference",
+            "hypothesis testing",
+            "regression analysis",
+            "bayesian statistics",
+        ],
+        "Teaching": [
+            "lesson planning",
+            "classroom management",
+            "assessment techniques",
+            "educational psychology",
+            "inclusive teaching",
+        ],
+        "Health": [
+            "nutrition",
+            "exercise",
+            "mental wellness",
+            "disease prevention",
+            "healthcare systems",
+        ],
+        "Communication": [
+            "verbal communication",
+            "nonverbal communication",
+            "interpersonal skills",
+            "public speaking",
+            "digital communication",
+        ],
+        "Philosophy": [
+            "metaphysics",
+            "epistemology",
+            "ethics",
+            "logic",
+            "political philosophy",
+        ],
+        "History": [
+            "historical methods",
+            "ancient history",
+            "medieval history",
+            "modern history",
+            "cultural history",
+        ],
+        "Art": [
+            "art history",
+            "drawing techniques",
+            "color theory",
+            "art movements",
+            "art appreciation",
+        ],
+        "Justice": [
+            "legal systems",
+            "criminal law",
+            "civil law",
+            "international law",
+            "ethics in justice",
+        ],
+        "Biology": [
+            "cell biology",
+            "genetics",
+            "evolution",
+            "ecology",
+            "human anatomy",
+        ],
+        "Chemistry": [
+            "atomic structure",
+            "chemical bonds",
+            "chemical reactions",
+            "organic chemistry",
+            "biochemistry",
+        ],
+        "Physics": [
+            "mechanics",
+            "thermodynamics",
+            "electromagnetism",
+            "quantum physics",
+            "relativity",
+        ],
+        "chinese": [
+            "pinyin",
+            "characters",
+            "grammar",
+            "listening",
+            "speaking",
+            "reading",
+            "writing",
+        ],
+        "spanish": [
+            "pronunciation",
+            "grammar",
+            "vocabulary",
+            "reading",
+            "writing",
+            "listening",
+            "speaking",
+        ],
+        "french": [
+            "pronunciation",
+            "grammar",
+            "vocabulary",
+            "reading",
+            "writing",
+            "listening",
+            "speaking",
+        ],
+        "german": [
+            "pronunciation",
+            "grammar",
+            "vocabulary",
+            "reading",
+            "writing",
+            "listening",
+            "speaking",
+        ],
+        "japanese": [
+            "hiragana",
+            "katakana",
+            "kanji",
+            "grammar",
+            "vocabulary",
+            "reading",
+            "writing",
+            "listening",
+            "speaking",
+        ],
+        "arabic": [
+            "alphabet",
+            "pronunciation",
+            "grammar",
+            "vocabulary",
+            "reading",
+            "writing",
+            "listening",
+            "speaking",
+        ],
+    }
+
+    # Get subtopic patterns for the main topic
+    patterns = subtopic_patterns.get(main_topic, [])
+
+    # Check for subtopics in the combined text
+    for pattern in patterns:
+        if pattern in combined_text:
+            subtopics.append(pattern)
+
+    return subtopics
+
+
+def generate_titles_for_topic(main_topic, subtopics):
+    """
+    Generate 4-5 content titles based on the main topic and identified subtopics.
+    """
+    # Define templates for each topic
+    topic_templates = {
+        "Python": [
+            "Introduction to Python",
+            "Python Variables and Data Types",
+            "Python Control Structures",
+            "Python Functions",
+            "Python Object-Oriented Programming",
+        ],
+        "Programming": [
+            "Introduction to Programming",
+            "Variables and Data Types",
+            "Control Structures",
+            "Functions and Methods",
+            "Error Handling and Debugging",
+        ],
+        "Artificial Intelligence": [
+            "Introduction to Artificial Intelligence",
+            "Machine Learning Fundamentals",
+            "Neural Networks and Deep Learning",
+            "Natural Language Processing",
+            "Computer Vision Applications",
+        ],
+        "Web Development": [
+            "HTML and CSS Fundamentals",
+            "JavaScript Essentials",
+            "Responsive Web Design",
+            "Frontend Frameworks",
+            "Backend Development",
+        ],
+        "Data Science": [
+            "Introduction to Data Science",
+            "Data Collection and Cleaning",
+            "Statistical Analysis",
+            "Data Visualization",
+            "Machine Learning Applications",
+        ],
+        "Marketing": [
+            "Marketing Fundamentals",
+            "Market Research and Analysis",
+            "Consumer Behavior",
+            "Digital Marketing Strategies",
+            "Marketing Campaign Planning",
+        ],
+        "Finance": [
+            "Introduction to Finance",
+            "Financial Planning and Analysis",
+            "Investment Strategies",
+            "Risk Management",
+            "Portfolio Management",
+        ],
+        "Leadership": [
+            "Leadership Fundamentals",
+            "Team Building and Management",
+            "Effective Communication",
+            "Decision Making and Problem Solving",
+            "Strategic Leadership",
+        ],
+        "Data Analysis": [
+            "Introduction to Data Analysis",
+            "Data Collection Methods",
+            "Statistical Analysis Techniques",
+            "Data Visualization",
+            "Data Interpretation and Reporting",
+        ],
+        "Statistics": [
+            "Introduction to Statistics",
+            "Probability Theory",
+            "Statistical Inference",
+            "Hypothesis Testing",
+            "Regression Analysis",
+        ],
+        "Teaching": [
+            "Introduction to Teaching",
+            "Lesson Planning and Design",
+            "Classroom Management Techniques",
+            "Assessment and Evaluation",
+            "Educational Technology",
+        ],
+        "Health": [
+            "Introduction to Health and Wellness",
+            "Nutrition and Diet",
+            "Exercise and Physical Activity",
+            "Mental Health and Stress Management",
+            "Disease Prevention",
+        ],
+        "Communication": [
+            "Communication Fundamentals",
+            "Verbal and Nonverbal Communication",
+            "Interpersonal Skills",
+            "Public Speaking",
+            "Digital Communication",
+        ],
+        "Philosophy": [
+            "Introduction to Philosoph",
+            "Ethics and Moral Philosoph",
+            "Logic and Critical Thinking",
+            "Metaphysics and Epistemology",
+            "Philosophy of Mind",
+        ],
+        "History": [
+            "Introduction to History",
+            "Historical Methods and Research",
+            "World History Overview",
+            "Cultural History",
+            "Historical Analysis and Interpretation",
+        ],
+        "Art": [
+            "Introduction to Art",
+            "Art History and Movements",
+            "Drawing Techniques",
+            "Color Theory",
+            "Art Appreciation",
+        ],
+        "Justice": [
+            "Introduction to Justice Systems",
+            "Criminal Law",
+            "Civil Law",
+            "International Law",
+            "Ethics in Justice",
+        ],
+        "Biology": [
+            "Introduction to Biology",
+            "Cell Biology",
+            "Genetics and Evolution",
+            "Ecology and Ecosystems",
+            "Human Biology",
+        ],
+        "Chemistry": [
+            "Introduction to Chemistry",
+            "Atomic Structure and Periodic Table",
+            "Chemical Bonds and Reactions",
+            "Organic Chemistry",
+            "Biochemistry",
+        ],
+        "Physics": [
+            "Introduction to Physics",
+            "Mechanics",
+            "Thermodynamics",
+            "Electromagnetism",
+            "Quantum Physics",
+        ],
+        "chinese": [
+            "Introduction to Mandarin Chinese",
+            "Pinyin and Pronunciation",
+            "Chinese Characters and Writing",
+            "Basic Grammar and Sentence Structure",
+            "Everyday Conversation Practice",
+        ],
+        "spanish": [
+            "Introduction to Spanish",
+            "Spanish Pronunciation",
+            "Basic Spanish Grammar",
+            "Vocabulary Building",
+            "Conversation Practice",
+        ],
+        "french": [
+            "Introduction to French",
+            "French Pronunciation",
+            "Basic French Grammar",
+            "Vocabulary Building",
+            "Conversation Practice",
+        ],
+        "german": [
+            "Introduction to German",
+            "German Pronunciation",
+            "Basic German Grammar",
+            "Vocabulary Building",
+            "Conversation Practice",
+        ],
+        "japanese": [
+            "Introduction to Japanese",
+            "Hiragana and Katakana",
+            "Basic Japanese Grammar",
+            "Kanji and Vocabulary Building",
+            "Conversation Practice",
+        ],
+        "arabic": [
+            "Introduction to Arabic",
+            "Arabic Alphabet and Pronunciation",
+            "Basic Arabic Grammar",
+            "Vocabulary Building",
+            "Conversation Practice",
+        ],
+    }
+
+    # Get the appropriate template for the main topic
+    templates = topic_templates.get(
+        main_topic,
+        [
+            "Introduction to Course",
+            "Basic Concepts",
+            "Intermediate Topics",
+            "Advanced Topics",
+            "Practical Applications",
+        ],
     )
 
-    # Special handling for language courses which might be in different categories
-    if (
-        "chinese" in lesson_title.lower()
-        or "mandarin" in lesson_title.lower()
-        or "spanish" in lesson_title.lower()
-        or "french" in lesson_title.lower()
-        or "german" in lesson_title.lower()
-        or "japanese" in lesson_title.lower()
-        or "arabic" in lesson_title.lower()
-        or "language" in lesson_title.lower()
-    ):
-        category_templates = content_templates["Languages"]
+    # If we have identified subtopics, try to incorporate them into the templates
+    if subtopics:
+        # For each subtopic, create a more specific content title
+        for i, subtopic in enumerate(subtopics[:4]):  # Limit to first 4 subtopics
+            if i < len(templates):
+                # Create a more specific title based on the subtopic
+                templates[i] = f"{main_topic}: {subtopic.title()}"
 
-    # If category is "Communication" and we detect language keywords, use Languages category instead
-    if category_name == "Communication" and any(
-        lang in combined_text
-        for lang in [
-            "mandarin",
-            "chinese",
-            "spanish",
-            "french",
-            "german",
-            "japanese",
-            "arabic",
-            "english",
-            "language",
-        ]
-    ):
-        category_templates = content_templates["Languages"]
+    return templates[:5]  # Return 4-5 titles
 
-    # Check if any keyword matches in the combined text, prioritizing more specific terms
-    # Create a priority list of keywords to check first
-    priority_keywords = [
-        "artificial intelligence",
-        "machine learning",
-        "deep learning",
-        "justice",
-        "philosophy",
-        "history",
-        "art",
-        "writing",
-        "chinese",
-        "mandarin",
-        "spanish",
-        "french",
-        "german",
-        "japanese",
-        "arabic",
-    ]
 
-    # Check priority keywords first
-    for keyword in priority_keywords:
-        if keyword in category_templates and keyword in combined_text:
-            return category_templates[keyword]
+def generate_fallback_content_titles(lesson_title, description, category_name):
+    """
+    Fallback method to generate content titles when API is not available.
+    Uses rule-based approach similar to the original implementation.
+    """
+    # Convert to lowercase for case-insensitive matching
+    lesson_title = lesson_title.lower()
+    description = description.lower()
 
-    # Then check the remaining keywords
-    for keyword, templates in category_templates.items():
-        if (
-            keyword != "default"
-            and keyword in combined_text
-            and keyword not in priority_keywords
-        ):
-            return templates
+    # Combine lesson title and description for comprehensive analysis
+    combined_text = f"{lesson_title} {description}"
 
-    # If no specific match, return the default templates
-    return category_templates["default"]
+    # Extract main topic using keyword analysis
+    main_topic = identify_main_topic(combined_text, category_name)
+
+    # Extract subtopics from the content
+    subtopics = identify_subtopics(combined_text, main_topic)
+
+    # Generate content titles based on the identified topic and subtopics
+    content_titles = generate_titles_for_topic(main_topic, subtopics)
+
+    return content_titles
 
 
 def generate_mock_data():

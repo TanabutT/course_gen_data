@@ -49,7 +49,7 @@ prior generate mock data
 
       ## Implementation Note
       The contentTitle generation uses a smart keyword matching system that:
-      1. Analyzes the lessontitle and break in to contents
+      1. Analyzes the lessontitle+shortDescription and break in to contents
       2. Identifies the main topic and subtopics within the content
       3. Generates a list of 4-5 relevant contenttitles that logically belong in the course
       4. Special handling for language courses with dedicated templates for Chinese, Spanish, French, German, Japanese, and Arabic
