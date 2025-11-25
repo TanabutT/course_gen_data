@@ -372,7 +372,7 @@ def extract_main_topic(title: str) -> str:
     return main_topic
 
 
-def generate_content_titles(title: str, description: str, category: str) -> str:
+def generate_content_titles(title: str, description: str, category: str) -> List[str]:
     """Generate 4-5 content titles as a comma-separated string based on the course title and description"""
 
     # Check if it's a language course first
@@ -461,8 +461,10 @@ def main():
         category = detect_category(description, lessontitle)
         subcategory = detect_subcategory(description, category)
 
-        # Generate content titles as comma-separated string
-        content_titles_str = generate_content_titles(lessontitle, description, category)
+        # Generate content titles as comma-separated list of strings
+        content_titles_list = generate_content_titles(
+            lessontitle, description, category
+        )
 
         # Generate timestamps
         created_at, updated_at, deleted_at = generate_timestamps()
@@ -479,7 +481,7 @@ def main():
         output_row = {
             "id": id,
             "lessontitle": lessontitle,
-            "contentTitle": content_titles_str,  # Now using comma-separated string
+            "contentTitle": content_titles_list,  # Now using comma-separated list of string
             "skillName": f"{category} Skills",
             "level": level,
             "categoryId": f"cat_{category.replace(' ', '_').lower()}",
